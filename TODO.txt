@@ -1,0 +1,43 @@
+(A) Make and pass tests for Conditional Branching using Skips.
+
+(A) Make and pass tests for Timers.
+
+(A) Make and pass tests for Keypad Input.
+
+(A) Make and pass tests for functions using the I Register.
+
+(A) Check if the Sprites array contains the correct elements.
+
+(A) Make and pass tests for Binary-Coded Decimal function (bcd).
+
+(A) Make and pass tests for functions for traspassing register values and 
+    to memory storage and vice-versa.
+
+(A) Fix Drawing Sprites to the Screen.
+
+(A) Implement timers update.
+
+(A) Implement sound support.
+
+(B) jp: return an error if the jump is pointing to the interpreter reserved
+    memory section (0x0-0x200-1).
+
+(B) test_jump: Catch errors from the jp function.
+
+(B) jp_v0_addr: return an error if the jump v[0]+nnn goes out of bounds
+    ([0x0-0x200-1] and > [0xfff-...]).
+
+(B) test_jump_plus_v0: Catch errors from jp_v0_addr.
+
+(B) call: return an error if trying to call a function when the stack pointer
+    is 0xf+1, caused by a previous call. It will cause stack overflow.
+
+(B) call: return an error if the the call function recieves as a paremeter
+      an address < 0x200 (reserved interpreter memory section).
+
+(B) test_call_subroutine: Catch errors from the call function.
+
+(B) ret: return a error when the stack pointer is zero and the return 
+    instruction is executed (There is no address to recover from the stack).
+
+(B) test_return_from_subroutine: Catch errors from ret.

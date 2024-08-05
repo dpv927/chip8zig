@@ -2,6 +2,9 @@ const std = @import("std");
 const raylib = @import("raylib");
 const keyboardKey = raylib.KeyboardKey;
 
+// Programs may also refer to a group of sprites representing the hexadecimal
+// digits 0 through F. These sprites are 5 bytes long, or 8x5 pixels. The data
+// should be stored in the interpreter area of Chip-8 memory (0x000 to 0x1FF)
 const sprites = [_]u8{
     0xf0, 0x90, 0x90, 0x90, 0xf0, // 0
     0x20, 0x60, 0x20, 0x20, 0x70, // 1
@@ -21,24 +24,26 @@ const sprites = [_]u8{
     0xf0, 0x80, 0xf0, 0x80, 0x80, // F
 };
 
-// Keypad mappings to QWERTY keyboard
+// The computers which originally used the Chip-8 Language had a 16-key
+// hexadecimal keypad. This keypad is mapped to the QWERTY keyboard as
+// defined in the following array:
 const keys = [16]keyboardKey{
-    keyboardKey.key_x,
-    keyboardKey.key_kp_1,
-    keyboardKey.key_kp_2,
-    keyboardKey.key_kp_3,
-    keyboardKey.key_q,
-    keyboardKey.key_w,
-    keyboardKey.key_e,
-    keyboardKey.key_a,
-    keyboardKey.key_s,
-    keyboardKey.key_d,
-    keyboardKey.key_z,
-    keyboardKey.key_c,
-    keyboardKey.key_kp_4,
-    keyboardKey.key_r,
-    keyboardKey.key_f,
-    keyboardKey.key_v,
+    keyboardKey.key_x, // 0
+    keyboardKey.key_kp_1, // 1
+    keyboardKey.key_kp_2, // 2
+    keyboardKey.key_kp_3, // 3
+    keyboardKey.key_q, // 4
+    keyboardKey.key_w, // 5
+    keyboardKey.key_e, // 6
+    keyboardKey.key_a, // 7
+    keyboardKey.key_s, // 8
+    keyboardKey.key_d, // 9
+    keyboardKey.key_z, // A
+    keyboardKey.key_c, // B
+    keyboardKey.key_kp_4, // C
+    keyboardKey.key_r, // D
+    keyboardKey.key_f, // E
+    keyboardKey.key_v, // F
 };
 
 /// Since the standard library handles all serious errors with its own
@@ -46,6 +51,8 @@ const keys = [16]keyboardKey{
 /// ROM file is too big.
 const ChipROMError = error{FileTooBig};
 
+/// Struct with the same propierties as a CHIP-8. New instances must be
+/// created with `var cpu = Chip8CPU.init()`
 pub const Chip8CPU = struct {
     display: [2048]u8,
     ram: [4096]u8,
@@ -117,7 +124,7 @@ pub const Chip8CPU = struct {
         // the return instruction is executed (There is no address
         // to recover from the stack).
         if (self.sp == 0) {
-            std.debug.print("Attempt to return with sp = 0", .{});
+            std.debug.print("ret: Attempt to return with sp = 0\n", .{});
             return;
         }
         self.sp -= 1;
@@ -128,7 +135,12 @@ pub const Chip8CPU = struct {
     /// The interpreter sets the program counter to nnn.
     /// (0x1nnn)
     fn jp(self: *Chip8CPU, nnn: u16) void {
-        self.pc = nnn;
+        if (nnn >= 0x200) {
+            self.pc = nnn;
+        } else {
+            // TODO Return an error here
+            std.debug.print("jp: Ilegal jump to interpreter memory section\n", .{});
+        }
     }
 
     /// Call subroutine at nnn
@@ -140,12 +152,19 @@ pub const Chip8CPU = struct {
         // the stack pointer is at the top of the stack. It will
         // cause stack overflow.
         if (self.sp > 0xf) {
-            std.debug.print("Subroutine call is causing Stack Overflow.", .{});
-            return;
+            // TODO Return an error if trying to call a function when
+            // the stack pointer is at the top of the stack. It will
+            // cause stack overflow.
+            std.debug.print("call: Stack Overflow.\n", .{});
+        } else if (nnn < 0x200) {
+            // TODO Return other error here
+            // Cannot jump the the interpreter reserved memory
+            std.debug.print("call: Ilegal jump to interpreter memory section\n", .{});
+        } else {
+            self.stack[self.sp] = self.pc;
+            self.sp += 1;
+            self.pc = nnn;
         }
-        self.stack[self.sp] = self.pc;
-        self.sp += 1;
-        self.pc = nnn;
     }
 
     /// Skip next instruction if Vx = kk
@@ -298,21 +317,13 @@ pub const Chip8CPU = struct {
     /// The program counter is set to nnn plus the value of V0.
     /// (0xbnnn)
     fn jp_v0_addr(self: *Chip8CPU, nnn: u16) void {
-        const overflow = @addWithOverflow(self.regv[0], nnn);
-        if (overflow[1] == 0) {
-            if (overflow[0] >= 0x200) {
-                self.pc = overflow[0];
-            } else {
-                // Try to access the reserved memory area for the interpreter
-                // from 0x0 to 0x200-1
-                std.debug.print("Jump into the reserved interpreter memory", .{});
-                // TODO Need a way to pause the loop and tell the user about
-                // the error. We dont update the pc right now so the program
-                // will freeze.
-            }
+        // No possible overflow here
+        const address = self.regv[0] + nnn;
+        if ((address >= 0x200) and (address <= 0xfff)) {
+            self.pc = address;
         } else {
             // The sum nnn + v[0] goes out of memory range
-            std.debug.print("Out of bounds jump: {} + {}", .{ nnn, self.regv[0] });
+            std.debug.print("jp_v0_addr: Out of bounds jump: {}\n", .{address});
             // TODO Need a way to pause the loop and tell the user about
             // the error. We dont update the pc right now so the program
             // will freeze.
@@ -775,7 +786,6 @@ test "test_shift_right" {
 
 test "test_shift_left" {
     var cpu = Chip8CPU.init();
-
     cpu.ld_vx_byte(1, 0b101);
     cpu.shl_vx_vy(0, 1);
     try std.testing.expect(cpu.regv[0] == 0b1010);
@@ -785,4 +795,90 @@ test "test_shift_left" {
     cpu.shl_vx_vy(0, 1);
     try std.testing.expect(cpu.regv[0] == 0b1000000);
     try std.testing.expect(cpu.regv[0xf] == 1);
+}
+
+test "test_call_subroutine" {
+    var cpu = Chip8CPU.init();
+    cpu.pc = 0x220;
+    cpu.sp = 1;
+    cpu.call(0x444);
+    try std.testing.expect(cpu.pc == 0x444);
+    try std.testing.expect(cpu.stack[1] == 0x220);
+    try std.testing.expect(cpu.sp == 2);
+
+    // Try to call a subroutine when there are no
+    // more space for adresses at the stack
+    // TODO Catch errors
+    cpu.pc = 0x322;
+    cpu.sp = 0xf + 1;
+    cpu.call(0x422);
+    try std.testing.expect(cpu.pc == 0x322);
+    try std.testing.expect(cpu.sp == (0xf + 1));
+
+    // Try to call access to the interpreter
+    // reserved memory area
+    cpu.pc = 0x420;
+    cpu.sp = 3;
+    cpu.stack[3] = 0x222;
+    cpu.call(0x100);
+    try std.testing.expect(cpu.pc == 0x420);
+    try std.testing.expect(cpu.stack[3] == 0x222);
+    try std.testing.expect(cpu.sp == 3);
+}
+
+test "test_return_from_subroutine" {
+    var cpu = Chip8CPU.init();
+    cpu.pc = 0x220;
+    cpu.sp = 1;
+    cpu.stack[0] = 0x310;
+    cpu.ret();
+    try std.testing.expect(cpu.pc == (0x310 + 2));
+    try std.testing.expect(cpu.sp == 0);
+
+    // Execute a ret instruction when the
+    // stack pointer is 0 (there is no pc to recover).
+    // TODO Catch errors
+    cpu.ret();
+    try std.testing.expect(cpu.pc == (0x310 + 2));
+    try std.testing.expect(cpu.sp == 0);
+}
+
+test "test_jump" {
+    var cpu = Chip8CPU.init();
+    cpu.pc = 0x220;
+    cpu.jp(0x310);
+    try std.testing.expect(cpu.pc == 0x310);
+
+    // Try to jump to the interpreter reserved
+    // memory section.
+    // TODO Catch errors
+    cpu.pc = 0x220;
+    cpu.jp(0x10);
+    try std.testing.expect(cpu.pc == 0x220);
+}
+
+test "test_jump_plus_v0" {
+    var cpu = Chip8CPU.init();
+    cpu.pc = 0x222;
+    cpu.ld_vx_byte(0, 2);
+    cpu.jp_v0_addr(0x320);
+    try std.testing.expect(cpu.pc == (0x320 + 2));
+
+    // Jump to ilegal memory section:
+    // Interpreter memory section.
+    // 0x450 + 2 because of the ld instruction
+    // TODO Catch errors
+    cpu.pc = 0x450;
+    cpu.ld_vx_byte(0, 12);
+    cpu.jp_v0_addr(0x111);
+    try std.testing.expect(cpu.pc == (0x450 + 2));
+
+    // Jump to a location that is a result
+    // of an addition overflow
+    // 0x250 + 2 because of the ld instruction
+    // TODO Catch errors
+    cpu.pc = 0x250;
+    cpu.ld_vx_byte(0, 25);
+    cpu.jp_v0_addr(0xfff);
+    try std.testing.expect(cpu.pc == (0x250 + 2));
 }
