@@ -2,6 +2,50 @@ const std = @import("std");
 const raylib = @import("raylib");
 const keyboardKey = raylib.KeyboardKey;
 
+const sprites = [_]u8{
+    0xf0, 0x90, 0x90, 0x90, 0xf0, // 0
+    0x20, 0x60, 0x20, 0x20, 0x70, // 1
+    0xf0, 0x10, 0xf0, 0x80, 0xf0, // 2
+    0xf0, 0x10, 0xf0, 0x10, 0xf0, // 3
+    0x90, 0x90, 0xf0, 0x10, 0x10, // 4
+    0xf0, 0x80, 0xf0, 0x10, 0xf0, // 5
+    0xf0, 0x80, 0xf0, 0x90, 0xf0, // 6
+    0xf0, 0x10, 0x20, 0x40, 0x40, // 7
+    0xf0, 0x90, 0xf0, 0x90, 0xf0, // 8
+    0xf0, 0x90, 0xf0, 0x10, 0xf0, // 9
+    0xf0, 0x90, 0xf0, 0x90, 0x90, // A
+    0xe0, 0x90, 0xe0, 0x90, 0xe0, // B
+    0xf0, 0x80, 0x80, 0x80, 0xf0, // C
+    0xe0, 0x90, 0x90, 0x90, 0xe0, // D
+    0xf0, 0x80, 0xf0, 0x80, 0xf0, // E
+    0xf0, 0x80, 0xf0, 0x80, 0x80, // F
+};
+
+// Keypad mappings to QWERTY keyboard
+const keys = [16]keyboardKey{
+    keyboardKey.key_x,
+    keyboardKey.key_kp_1,
+    keyboardKey.key_kp_2,
+    keyboardKey.key_kp_3,
+    keyboardKey.key_q,
+    keyboardKey.key_w,
+    keyboardKey.key_e,
+    keyboardKey.key_a,
+    keyboardKey.key_s,
+    keyboardKey.key_d,
+    keyboardKey.key_z,
+    keyboardKey.key_c,
+    keyboardKey.key_kp_4,
+    keyboardKey.key_r,
+    keyboardKey.key_f,
+    keyboardKey.key_v,
+};
+
+/// Since the standard library handles all serious errors with its own
+/// error types, we only need to create the error type to detect when the
+/// ROM file is too big.
+const ChipROMError = error{FileTooBig};
+
 pub const Chip8CPU = struct {
     display: [2048]u8,
     ram: [4096]u8,
@@ -15,60 +59,16 @@ pub const Chip8CPU = struct {
     pc: u16,
     sp: u8,
 
-    const sprites = [80]u8{
-        0xf0, 0x90, 0x90, 0x90, 0xf0, // 0
-        0x20, 0x60, 0x20, 0x20, 0x70, // 1
-        0xf0, 0x10, 0xf0, 0x80, 0xf0, // 2
-        0xf0, 0x10, 0xf0, 0x10, 0xf0, // 3
-        0x90, 0x90, 0xf0, 0x10, 0x10, // 4
-        0xf0, 0x80, 0xf0, 0x10, 0xf0, // 5
-        0xf0, 0x80, 0xf0, 0x90, 0xf0, // 6
-        0xf0, 0x10, 0x20, 0x40, 0x40, // 7
-        0xf0, 0x90, 0xf0, 0x90, 0xf0, // 8
-        0xf0, 0x90, 0xf0, 0x10, 0xf0, // 9
-        0xf0, 0x90, 0xf0, 0x90, 0x90, // A
-        0xe0, 0x90, 0xe0, 0x90, 0xe0, // B
-        0xf0, 0x80, 0x80, 0x80, 0xf0, // C
-        0xe0, 0x90, 0x90, 0x90, 0xe0, // D
-        0xf0, 0x80, 0xf0, 0x80, 0xf0, // E
-        0xf0, 0x80, 0xf0, 0x80, 0x80, // F
-    };
-
-    // Keypad mappings to QWERTY keyboard
-    const keys = [16]keyboardKey{
-        keyboardKey.key_x,
-        keyboardKey.key_kp_1,
-        keyboardKey.key_kp_2,
-        keyboardKey.key_kp_3,
-        keyboardKey.key_q,
-        keyboardKey.key_w,
-        keyboardKey.key_e,
-        keyboardKey.key_a,
-        keyboardKey.key_s,
-        keyboardKey.key_d,
-        keyboardKey.key_z,
-        keyboardKey.key_c,
-        keyboardKey.key_kp_4,
-        keyboardKey.key_r,
-        keyboardKey.key_f,
-        keyboardKey.key_v,
-    };
-
-    /// Since the standard library handles all serious errors with its own
-    /// error types, we only need to create the error type to detect when the
-    /// ROM file is too big.
-    const ChipROMError = error{FileTooBig};
-
     /// Creates a new instance of a CPU
     /// with all resgisters and memory
     /// Initialized
     pub fn init() Chip8CPU {
         var cpu: Chip8CPU = Chip8CPU{
-            .display = undefined,
-            .ram = undefined,
-            .stack = undefined,
-            .regv = undefined,
-            .keypad = undefined,
+            .display = std.mem.zeroes([2048]u8),
+            .ram = std.mem.zeroes([4096]u8),
+            .stack = std.mem.zeroes([16]u16),
+            .regv = std.mem.zeroes([16]u8),
+            .keypad = std.mem.zeroes([16]u8),
             .draw = false,
             .i = 0x0,
             .dt = 0x0,
@@ -76,13 +76,6 @@ pub const Chip8CPU = struct {
             .pc = 0x200,
             .sp = 0x0,
         };
-
-        // Initialize all the buffers
-        cpu.display = std.mem.zeroes([2048]u8);
-        cpu.ram = std.mem.zeroes([4096]u8);
-        cpu.stack = std.mem.zeroes([16]u16);
-        cpu.regv = std.mem.zeroes([16]u8);
-        cpu.keypad = std.mem.zeroes([16]u8);
 
         // Load sprites to memory (0 - 80)
         std.mem.copyForwards(u8, &cpu.ram, &sprites);
@@ -120,8 +113,13 @@ pub const Chip8CPU = struct {
     /// the stack, then subtracts 1 from the stack pointer.
     /// (0x00ee)
     fn ret(self: *Chip8CPU) void {
-        if (self.sp == 0)
+        // TODO Return a error when the stack pointer is zero and
+        // the return instruction is executed (There is no address
+        // to recover from the stack).
+        if (self.sp == 0) {
+            std.debug.print("Attempt to return with sp = 0", .{});
             return;
+        }
         self.sp -= 1;
         self.pc = self.stack[self.sp] + 2;
     }
@@ -138,8 +136,13 @@ pub const Chip8CPU = struct {
     /// PC on the top of the stack. The PC is then set to nnn.
     /// (0x2nnn)
     fn call(self: *Chip8CPU, nnn: u16) void {
-        if (self.sp > 0xf)
+        // TODO Return an error if trying to call a function when
+        // the stack pointer is at the top of the stack. It will
+        // cause stack overflow.
+        if (self.sp > 0xf) {
+            std.debug.print("Subroutine call is causing Stack Overflow.", .{});
             return;
+        }
         self.stack[self.sp] = self.pc;
         self.sp += 1;
         self.pc = nnn;
@@ -265,15 +268,14 @@ pub const Chip8CPU = struct {
         self.pc += 2;
     }
 
-    /// Set Vx = Vx SHL 1.
-    /// If the most-significant bit of Vx is 1, then VF is set to 1,
-    /// otherwise to 0. Then Vx is multiplied by 2.
+    /// Set Vx = Vy SHL 1.
+    /// If the most-significant bit of Vy is 1, then VF is set to 1,
+    /// otherwise to 0. Then Vy is multiplied by 2.
     /// (0x8xye)
     fn shl_vx_vy(self: *Chip8CPU, x: u8, y: u8) void {
-        self.regv[0xf] = ((0x80 & self.regv[x]));
-        self.regv[x] = @truncate(self.regv[x] << 0x1);
+        self.regv[0xf] = @truncate((0x80 & self.regv[y]) >> 7);
+        self.regv[x] = @truncate(self.regv[y] << 1);
         self.pc += 2;
-        _ = y;
     }
 
     /// Skip next instruction if Vx != Vy.
@@ -296,7 +298,25 @@ pub const Chip8CPU = struct {
     /// The program counter is set to nnn plus the value of V0.
     /// (0xbnnn)
     fn jp_v0_addr(self: *Chip8CPU, nnn: u16) void {
-        self.pc = self.regv[0x0] + nnn;
+        const overflow = @addWithOverflow(self.regv[0], nnn);
+        if (overflow[1] == 0) {
+            if (overflow[0] >= 0x200) {
+                self.pc = overflow[0];
+            } else {
+                // Try to access the reserved memory area for the interpreter
+                // from 0x0 to 0x200-1
+                std.debug.print("Jump into the reserved interpreter memory", .{});
+                // TODO Need a way to pause the loop and tell the user about
+                // the error. We dont update the pc right now so the program
+                // will freeze.
+            }
+        } else {
+            // The sum nnn + v[0] goes out of memory range
+            std.debug.print("Out of bounds jump: {} + {}", .{ nnn, self.regv[0] });
+            // TODO Need a way to pause the loop and tell the user about
+            // the error. We dont update the pc right now so the program
+            // will freeze.
+        }
     }
 
     /// Set Vx = random byte AND kk.
@@ -750,5 +770,19 @@ test "test_shift_right" {
     cpu.ld_vx_byte(1, 0b10100111);
     cpu.shr_vx_vy(0, 1);
     try std.testing.expect(cpu.regv[0] == 0b1010011);
+    try std.testing.expect(cpu.regv[0xf] == 1);
+}
+
+test "test_shift_left" {
+    var cpu = Chip8CPU.init();
+
+    cpu.ld_vx_byte(1, 0b101);
+    cpu.shl_vx_vy(0, 1);
+    try std.testing.expect(cpu.regv[0] == 0b1010);
+    try std.testing.expect(cpu.regv[0xf] == 0);
+
+    cpu.ld_vx_byte(1, 0b10100000);
+    cpu.shl_vx_vy(0, 1);
+    try std.testing.expect(cpu.regv[0] == 0b1000000);
     try std.testing.expect(cpu.regv[0xf] == 1);
 }
