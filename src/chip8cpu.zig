@@ -65,6 +65,7 @@ pub const Chip8CPU = struct {
     st: u8,
     pc: u16,
     sp: u8,
+    count: u8,
 
     /// Creates a new instance of a CPU
     /// with all resgisters and memory
@@ -82,6 +83,7 @@ pub const Chip8CPU = struct {
             .st = 0x0,
             .pc = 0x200,
             .sp = 0x0,
+            .count = 0x0,
         };
 
         // Load sprites to memory (0 - 80)
@@ -355,16 +357,16 @@ pub const Chip8CPU = struct {
         self.pc += 2;
         self.draw = true;
 
-        for (0..n - 1) |it| {
+        for (0..n) |it| {
             const sprite: u8 = self.ram[self.i + it];
-            const y_wrap = ((y + it) & 31) << 6;
+            const y_wrap = ((y + it) % 31) << 6;
 
-            for (0..7) |jt| {
+            for (0..8) |jt| {
                 var bit: u8 = 0x80;
-                bit >>= @truncate(jt);
+                bit >>= @intCast(jt);
 
                 if ((bit & sprite) != 0x0) {
-                    const x_wrap = (x + jt) & 63;
+                    const x_wrap = (x + jt) % 63;
                     const pos = x_wrap + y_wrap;
 
                     if (self.display[pos] == 1)
@@ -404,7 +406,7 @@ pub const Chip8CPU = struct {
     /// key is stored in Vx.
     /// (0xfx0a)
     fn ld_vx_k(self: *Chip8CPU, x: u8) void {
-        for (0x0..0xf) |key| {
+        for (0x0..0x10) |key| {
             if (self.keypad[key] == 1) {
                 self.regv[x] = @intCast(key);
                 self.pc += 2;
@@ -464,8 +466,9 @@ pub const Chip8CPU = struct {
     /// memory, starting at the address in I.
     /// (0xfx55)
     fn ld_i_vx(self: *Chip8CPU, x: u8) void {
-        for (0x0..x) |addr|
+        for (0..x + 1) |addr|
             self.ram[self.i + addr] = self.regv[addr];
+        self.i += x + 1;
         self.pc += 2;
     }
 
@@ -474,26 +477,32 @@ pub const Chip8CPU = struct {
     /// into registers V0 through Vx.
     /// (0xfx65)
     fn ld_vx_i(self: *Chip8CPU, x: u8) void {
-        for (0x0..x) |reg|
+        for (0..x + 1) |reg|
             self.regv[reg] = self.ram[self.i + reg];
+        self.i += x + 1;
         self.pc += 2;
     }
 
     pub fn get_pressed_keys(self: *Chip8CPU) void {
-        for (0x0..0xf) |key| {
+        for (0x0..0x10) |key| {
             self.keypad[key] =
                 if (raylib.isKeyPressed(keys[key])) 1 else 0;
         }
     }
 
     pub fn print_memory(self: *Chip8CPU) void {
+        std.debug.print("\nMemory: ", .{});
+        for (0..0x200) |index| {
+            std.debug.print("{} ", .{self.ram[index]});
+        }
+
         std.debug.print("\nStack: ", .{});
-        for (0..0xf) |index| {
+        for (0..0x10) |index| {
             std.debug.print("{} ", .{self.stack[index]});
         }
 
         std.debug.print("\nRegisters: ", .{});
-        for (0..0xf) |index| {
+        for (0..0x10) |index| {
             std.debug.print("{} ", .{self.regv[index]});
         }
 
@@ -646,8 +655,8 @@ pub const Chip8CPU = struct {
                 // Get last 2 nibbles
                 nibble = @truncate(opcode & 0x00ff);
                 switch (nibble) {
-                    0x9e => self.skp_vx(@truncate(opcode & 0x0f00)), // 0xex9e
-                    0xa1 => self.skpn_vx(@truncate(opcode & 0x0f00)), // 0xexa1
+                    0x9e => self.skp_vx(@truncate((opcode & 0x0f00) >> 8)),
+                    0xa1 => self.skpn_vx(@truncate((opcode & 0x0f00) >> 8)),
                     else => unreachable, // End of 0xexyz
                 }
             },
@@ -655,15 +664,15 @@ pub const Chip8CPU = struct {
                 // Get last 2 nibbles
                 nibble = @truncate(opcode & 0x00ff);
                 switch (nibble) {
-                    0x07 => self.ld_vx_dt(@truncate(opcode & 0x0f00)), // 0xfx07
-                    0x0a => self.ld_vx_k(@truncate(opcode & 0x0f00)), // 0xfx0a
-                    0x15 => self.ld_dt_vx(@truncate(opcode & 0x0f00)), // 0xfx15
-                    0x18 => self.ld_st_vx(@truncate(opcode & 0x0f00)), // 0xfx18
-                    0x1e => self.add_i_vx(@truncate(opcode & 0x0f00)), // 0xfx1e
-                    0x29 => self.ld_f_vx(@truncate(opcode & 0x0f00)), // 0xfx29
-                    0x33 => self.ld_b_vx(@truncate(opcode & 0x0f00)), // 0xfx33
-                    0x55 => self.ld_i_vx(@truncate(opcode & 0x0f00)), // 0xfx55
-                    0x65 => self.ld_vx_i(@truncate(opcode & 0x0f00)), // 0xfx65
+                    0x07 => self.ld_vx_dt(@truncate((opcode & 0x0f00) >> 8)),
+                    0x0a => self.ld_vx_k(@truncate((opcode & 0x0f00) >> 8)),
+                    0x15 => self.ld_dt_vx(@truncate((opcode & 0x0f00) >> 8)),
+                    0x18 => self.ld_st_vx(@truncate((opcode & 0x0f00) >> 8)),
+                    0x1e => self.add_i_vx(@truncate((opcode & 0x0f00) >> 8)),
+                    0x29 => self.ld_f_vx(@truncate((opcode & 0x0f00) >> 8)),
+                    0x33 => self.ld_b_vx(@truncate((opcode & 0x0f00) >> 8)),
+                    0x55 => self.ld_i_vx(@truncate((opcode & 0x0f00) >> 8)),
+                    0x65 => self.ld_vx_i(@truncate((opcode & 0x0f00) >> 8)),
                     else => unreachable, // End of 0xfxyz
                 }
             },
@@ -866,19 +875,240 @@ test "test_jump_plus_v0" {
 
     // Jump to ilegal memory section:
     // Interpreter memory section.
-    // 0x450 + 2 because of the ld instruction
     // TODO Catch errors
     cpu.pc = 0x450;
-    cpu.ld_vx_byte(0, 12);
+    cpu.regv[0] = 12;
     cpu.jp_v0_addr(0x111);
-    try std.testing.expect(cpu.pc == (0x450 + 2));
+    try std.testing.expect(cpu.pc == 0x450);
 
     // Jump to a location that is a result
     // of an addition overflow
-    // 0x250 + 2 because of the ld instruction
     // TODO Catch errors
     cpu.pc = 0x250;
-    cpu.ld_vx_byte(0, 25);
+    cpu.regv[0] = 25;
     cpu.jp_v0_addr(0xfff);
-    try std.testing.expect(cpu.pc == (0x250 + 2));
+    try std.testing.expect(cpu.pc == 0x250);
+}
+
+test "test_skip_if_vx_equals_byte" {
+    var cpu = Chip8CPU.init();
+    // Comparing a register with a same value
+    // should skip next instruction (pc += 4)
+    cpu.pc = 0x222;
+    cpu.regv[0] = 112;
+    cpu.se_vx_byte(0, 112);
+    try std.testing.expect(cpu.pc == (0x222 + 4));
+
+    // Comparing a register with a different value
+    // should not skip next instruction (pc += 2)
+    cpu.pc = 0x222;
+    cpu.regv[0] = 112;
+    cpu.se_vx_byte(0, 13);
+    try std.testing.expect(cpu.pc == (0x222 + 2));
+}
+
+test "test_skip_if_vx_equals_vy" {
+    var cpu = Chip8CPU.init();
+    // Comparing registers with the same values
+    // should skip next instruction (pc += 4)
+    cpu.pc = 0x222;
+    cpu.regv[0] = 32;
+    cpu.regv[1] = 32;
+    cpu.se_vx_vy(0, 1);
+    try std.testing.expect(cpu.pc == (0x222 + 4));
+
+    // Comparing registers with the same values
+    // should not skip next instruction (pc += 2)
+    cpu.pc = 0x222;
+    cpu.regv[0] = 42;
+    cpu.regv[1] = 133;
+    cpu.se_vx_vy(0, 1);
+    try std.testing.expect(cpu.pc == (0x222 + 2));
+}
+
+test "test_skip_if_vx_not_equals_byte" {
+    var cpu = Chip8CPU.init();
+    // Comparing a register with a same value
+    // should not skip next instruction (pc += 2)
+    cpu.pc = 0x222;
+    cpu.regv[0] = 112;
+    cpu.sne_vx_byte(0, 112);
+    try std.testing.expect(cpu.pc == (0x222 + 2));
+
+    // Comparing a register with a different value
+    // should skip next instruction (pc += 4)
+    cpu.pc = 0x222;
+    cpu.regv[0] = 112;
+    cpu.sne_vx_byte(0, 13);
+    try std.testing.expect(cpu.pc == (0x222 + 4));
+}
+
+test "test_skip_if_vx_not_equals_vy" {
+    var cpu = Chip8CPU.init();
+    // Comparing registers with the same values
+    // should not skip next instruction (pc += 2)
+    cpu.pc = 0x222;
+    cpu.regv[0] = 32;
+    cpu.regv[1] = 32;
+    cpu.sne_vx_vy(0, 1);
+    try std.testing.expect(cpu.pc == (0x222 + 2));
+
+    // Comparing registers with different values
+    // should skip next instruction (pc += 4)
+    cpu.pc = 0x222;
+    cpu.regv[0] = 42;
+    cpu.regv[1] = 133;
+    cpu.sne_vx_vy(0, 1);
+    try std.testing.expect(cpu.pc == (0x222 + 4));
+}
+
+test "set_dt_to_vx" {
+    var cpu = Chip8CPU.init();
+    cpu.regv[0] = 32;
+    cpu.dt = 132;
+    cpu.ld_dt_vx(0);
+    try std.testing.expect(cpu.dt == 32);
+}
+
+test "set_vx_to_dt" {
+    var cpu = Chip8CPU.init();
+    cpu.regv[0] = 32;
+    cpu.dt = 132;
+    cpu.ld_vx_dt(0);
+    try std.testing.expect(cpu.dt == 132);
+}
+
+test "set_st_to_vx" {
+    var cpu = Chip8CPU.init();
+    cpu.regv[0] = 173;
+    cpu.st = 67;
+    cpu.ld_st_vx(0);
+    try std.testing.expect(cpu.st == 173);
+}
+
+test "test_wait_for_keypress_vx" {
+    var cpu = Chip8CPU.init();
+    // Wait for key pressed. In this case,
+    // the key 0xc. Shold do pc += 2;
+    cpu.pc = 0x210;
+    cpu.regv[0] = 67;
+    cpu.keypad[0xc] = 1;
+    cpu.ld_vx_k(0);
+    try std.testing.expect(cpu.regv[0] == 0xc);
+    try std.testing.expect(cpu.pc == (0x210 + 2));
+
+    // Wait for key pressed. In this case,
+    // the key 0xc. Shold not do pc += 2;
+    cpu.pc = 0x312;
+    cpu.regv[0] = 12;
+    cpu.keypad[0xc] = 0;
+    cpu.ld_vx_k(0);
+    try std.testing.expect(cpu.regv[0] == 12);
+    try std.testing.expect(cpu.pc == 0x312);
+}
+
+test "test_skip_if_vx_is_pressed" {
+    var cpu = Chip8CPU.init();
+    // Skip next instruction (pc += 4)if keypad[v[x]]
+    // is pressed. In this case, it is.
+    cpu.pc = 0x332;
+    cpu.regv[0] = 0xa;
+    cpu.keypad[0xa] = 1;
+    cpu.skp_vx(0);
+    try std.testing.expect(cpu.pc == (0x332 + 4));
+
+    // Skip next instruction (pc += 4)if keypad[v[x]]
+    // is pressed. In this case, its not.
+    cpu.pc = 0x412;
+    cpu.regv[0] = 0xa;
+    cpu.keypad[0xa] = 0;
+    cpu.skp_vx(0);
+    try std.testing.expect(cpu.pc == (0x412 + 2));
+}
+
+test "test_skip_if_vx_is_not_pressed" {
+    var cpu = Chip8CPU.init();
+    // Skip next instruction (pc += 4) if keypad[v[x]]
+    // is not pressed. In this case, it is.
+    cpu.pc = 0x332;
+    cpu.regv[0] = 0xa;
+    cpu.keypad[0xa] = 1;
+    cpu.skpn_vx(0);
+    try std.testing.expect(cpu.pc == (0x332 + 2));
+
+    // Skip next instruction (pc += 4) if keypad[v[x]]
+    // is not pressed. In this case, its not.
+    cpu.pc = 0x412;
+    cpu.regv[0] = 0xa;
+    cpu.keypad[0xa] = 0;
+    cpu.skpn_vx(0);
+    try std.testing.expect(cpu.pc == (0x412 + 4));
+}
+
+test "test_store_word_in_i" {
+    var cpu = Chip8CPU.init();
+    cpu.ld_i_addr(0xf5f);
+    try std.testing.expect(cpu.i == 0xf5f);
+}
+
+test "test_store_vx_value_in_i" {
+    var cpu = Chip8CPU.init();
+    cpu.ld_vx_byte(0, 0x22);
+    cpu.add_i_vx(0);
+    try std.testing.expect(cpu.i == 0x22);
+}
+
+test "test_store_vx_sprite_address_in_i" {
+    var cpu = Chip8CPU.init();
+    cpu.ld_vx_byte(0, 0xc);
+    cpu.ld_f_vx(0);
+    try std.testing.expect(cpu.i == (60));
+
+    cpu.ld_vx_byte(0, 1);
+    cpu.ld_f_vx(0);
+    try std.testing.expect(cpu.i == 5);
+
+    cpu.ld_vx_byte(0, 8);
+    cpu.ld_f_vx(0);
+    try std.testing.expect(cpu.i == 40);
+}
+
+test "test_bcd" {
+    var cpu = Chip8CPU.init();
+    cpu.i = 0x200;
+    cpu.regv[0] = 123;
+    cpu.ld_b_vx(0);
+    try std.testing.expect(cpu.ram[0x200] == 1);
+    try std.testing.expect(cpu.ram[0x201] == 2);
+    try std.testing.expect(cpu.ram[0x202] == 3);
+}
+
+test "test_store_v_registers_at_i" {
+    var cpu = Chip8CPU.init();
+    for (0..0x10) |reg| {
+        cpu.regv[reg] = @intCast(reg);
+    }
+
+    cpu.i = 0x200;
+    cpu.ld_i_vx(0xf);
+
+    for (0..0x10) |reg| {
+        try std.testing.expect(cpu.ram[0x200 + reg] == reg);
+    }
+    try std.testing.expect(cpu.i == (0x200 + 0xf + 1));
+}
+
+test "test_store_mem_at_v_registers_from_i" {
+    var cpu = Chip8CPU.init();
+    for (0.., 0x200..0x200 + 0x10) |iter, addr| {
+        cpu.ram[addr] = @intCast(iter);
+    }
+
+    cpu.i = 0x200;
+    cpu.ld_vx_i(0xf);
+
+    for (0..0x10) |reg| {
+        try std.testing.expect(cpu.regv[reg] == reg);
+    }
+    try std.testing.expect(cpu.i == (0x200 + 0xf + 1));
 }

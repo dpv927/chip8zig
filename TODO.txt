@@ -1,19 +1,12 @@
-(A) Make and pass tests for Conditional Branching using Skips.
-
-(A) Make and pass tests for Timers.
-
-(A) Make and pass tests for Keypad Input.
-
-(A) Make and pass tests for functions using the I Register.
-
-(A) Check if the Sprites array contains the correct elements.
-
-(A) Make and pass tests for Binary-Coded Decimal function (bcd).
-
-(A) Make and pass tests for functions for traspassing register values and 
+x Make and pass tests for Conditional Branching using Skips.
+x Make and pass tests for Timers.
+x Make and pass tests for Keypad Input.
+x Make and pass tests for functions using the I Register.
+x Check if the Sprites array contains the correct elements.
+x Make and pass tests for Binary-Coded Decimal function (bcd).
+x Make and pass tests for functions for traspassing register values and 
     to memory storage and vice-versa.
-
-(A) Fix Drawing Sprites to the Screen.
+x Fix Drawing Sprites to the Screen.
 
 (A) Implement timers update.
 

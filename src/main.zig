@@ -9,7 +9,7 @@ pub fn main() !void {
     var cpu: Chip8CPU = Chip8CPU.init();
 
     // Load the ROM file to memory
-    cpu.loadToROM("/home/tux/Desktop/chip8zig/src/ibm.ch8") catch |err| {
+    cpu.loadToROM("/home/tux/Downloads/1dcell.ch8") catch |err| {
         std.debug.print("ROM could not be loaded: {}", .{err});
         return;
     };
@@ -17,10 +17,9 @@ pub fn main() !void {
     // Create a new window (64x32 screen)
     raylib.initWindow(64 * 30, 32 * 30, "raylib-zig [core] example");
     defer raylib.closeWindow();
-    raylib.setTargetFPS(20);
+    //raylib.setTargetFPS(60);
 
     while (!raylib.windowShouldClose()) {
-        cpu.print_memory();
         // Capture the pressed keys
         cpu.get_pressed_keys();
 
@@ -43,5 +42,6 @@ pub fn main() !void {
                 );
             }
         }
+        // cpu.print_memory();
     }
 }
