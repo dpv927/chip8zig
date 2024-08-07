@@ -46,10 +46,14 @@ const keys = [16]keyboardKey{
     keyboardKey.key_v, // F
 };
 
-/// Since the standard library handles all serious errors with its own
-/// error types, we only need to create the error type to detect when the
-/// ROM file is too big.
-const ChipROMError = error{FileTooBig};
+const ReadROMError = error{FileTooBig};
+pub const FetchError = error{InvalidOpcode};
+pub const ExecError = error{
+    ReturnWithEmptyStack,
+    JumpToInterpreterMemory,
+    StackOverflow,
+    JumpOutOfBounds,
+};
 
 /// Struct with the same propierties as a CHIP-8. New instances must be
 /// created with `var cpu = Chip8CPU.init()`
@@ -101,7 +105,7 @@ pub const Chip8CPU = struct {
 
         const file_size = try file.getEndPos();
         if (file_size > (0xfff - 0x200) + 1) {
-            return ChipROMError.FileTooBig;
+            return ReadROMError.FileTooBig;
         }
 
         var buf_reader = std.io.bufferedReader(file.reader());
@@ -121,27 +125,27 @@ pub const Chip8CPU = struct {
     /// The interpreter sets the program counter to the address at the top of
     /// the stack, then subtracts 1 from the stack pointer.
     /// (0x00ee)
-    fn ret(self: *Chip8CPU) void {
-        // TODO Return a error when the stack pointer is zero and
-        // the return instruction is executed (There is no address
-        // to recover from the stack).
-        if (self.sp == 0) {
-            std.debug.print("ret: Attempt to return with sp = 0\n", .{});
-            return;
+    fn ret(self: *Chip8CPU) ExecError!void {
+        if (self.sp != 0) {
+            self.sp -= 1;
+            self.pc = self.stack[self.sp] + 2;
+        } else {
+            // This means there are no more addresses to recover
+            // from the stack, so sp = 0.
+            return ExecError.ReturnWithEmptyStack;
         }
-        self.sp -= 1;
-        self.pc = self.stack[self.sp] + 2;
     }
 
     /// Jump to location nnn
     /// The interpreter sets the program counter to nnn.
     /// (0x1nnn)
-    fn jp(self: *Chip8CPU, nnn: u16) void {
+    fn jp(self: *Chip8CPU, nnn: u16) ExecError!void {
         if (nnn >= 0x200) {
             self.pc = nnn;
         } else {
-            // TODO Return an error here
-            std.debug.print("jp: Ilegal jump to interpreter memory section\n", .{});
+            // This means nnn is trying to access the reserved
+            // chip8 interpreter memory section.
+            return ExecError.JumpToInterpreterMemory;
         }
     }
 
@@ -149,19 +153,14 @@ pub const Chip8CPU = struct {
     /// The interpreter increments the stack pointer, then puts the current
     /// PC on the top of the stack. The PC is then set to nnn.
     /// (0x2nnn)
-    fn call(self: *Chip8CPU, nnn: u16) void {
-        // TODO Return an error if trying to call a function when
-        // the stack pointer is at the top of the stack. It will
-        // cause stack overflow.
+    fn call(self: *Chip8CPU, nnn: u16) ExecError!void {
         if (self.sp > 0xf) {
-            // TODO Return an error if trying to call a function when
-            // the stack pointer is at the top of the stack. It will
-            // cause stack overflow.
-            std.debug.print("call: Stack Overflow.\n", .{});
+            // Trying to call a function when the stack pointer is at the top
+            // of the stack (every slot is used). It will cause stack overflow.
+            return ExecError.StackOverflow;
         } else if (nnn < 0x200) {
-            // TODO Return other error here
-            // Cannot jump the the interpreter reserved memory
-            std.debug.print("call: Ilegal jump to interpreter memory section\n", .{});
+            // Cannot jump the the interpreter reserved memory.
+            return ExecError.JumpToInterpreterMemory;
         } else {
             self.stack[self.sp] = self.pc;
             self.sp += 1;
@@ -318,17 +317,21 @@ pub const Chip8CPU = struct {
     /// Jump to location nnn + V0.
     /// The program counter is set to nnn plus the value of V0.
     /// (0xbnnn)
-    fn jp_v0_addr(self: *Chip8CPU, nnn: u16) void {
+    fn jp_v0_addr(self: *Chip8CPU, nnn: u16) ExecError!void {
         // No possible overflow here
         const address = self.regv[0] + nnn;
-        if ((address >= 0x200) and (address <= 0xfff)) {
-            self.pc = address;
+        if (address >= 0x200) {
+            if (address <= 0xfff) {
+                self.pc = address;
+            } else {
+                // The sum nnn + v[0] exceeds 0xfff, which is the chip8
+                // memory highest address.
+                return ExecError.JumpOutOfBounds;
+            }
         } else {
-            // The sum nnn + v[0] goes out of memory range
-            std.debug.print("jp_v0_addr: Out of bounds jump: {}\n", .{address});
-            // TODO Need a way to pause the loop and tell the user about
-            // the error. We dont update the pc right now so the program
-            // will freeze.
+            // The sum nnn + v[0] results in an address inside of the
+            // interpreter's reserved memory.
+            return ExecError.JumpToInterpreterMemory;
         }
     }
 
@@ -490,32 +493,9 @@ pub const Chip8CPU = struct {
         }
     }
 
-    pub fn print_memory(self: *Chip8CPU) void {
-        std.debug.print("\nMemory: ", .{});
-        for (0..0x200) |index| {
-            std.debug.print("{} ", .{self.ram[index]});
-        }
-
-        std.debug.print("\nStack: ", .{});
-        for (0..0x10) |index| {
-            std.debug.print("{} ", .{self.stack[index]});
-        }
-
-        std.debug.print("\nRegisters: ", .{});
-        for (0..0x10) |index| {
-            std.debug.print("{} ", .{self.regv[index]});
-        }
-
-        std.debug.print("\ni: {}", .{self.i});
-        std.debug.print("\ndt: {}", .{self.dt});
-        std.debug.print("\nst: {}", .{self.st});
-        std.debug.print("\npc: {}", .{self.pc});
-        std.debug.print("\nsp: {}\n", .{self.sp});
-    }
-
     /// Fetches the next instruction (the one stored in RAM and being pointed
     /// by the pc register). Then executes the instruction.
-    pub fn exec_next_cicle(self: *Chip8CPU) void {
+    pub fn exec_next_cicle(self: *Chip8CPU) !void {
         // Fetch the next 2 byte instruction
         var opcode: u16 = @intCast(self.ram[self.pc]);
         opcode <<= 8;
@@ -528,13 +508,13 @@ pub const Chip8CPU = struct {
             0 => { // Fixed codes
                 switch (opcode) {
                     0x00e0 => self.cls(),
-                    0x00ee => self.ret(),
-                    else => unreachable,
+                    0x00ee => try self.ret(),
+                    else => return FetchError.InvalidOpcode,
                 }
             },
-            1 => self.jp(opcode & 0x0fff), // 0x1nnn
-            2 => self.call(opcode & 0x0fff), // 0x2nnn
-            3 => { // 0x3xkk
+            1 => try self.jp(opcode & 0x0fff),
+            2 => try self.call(opcode & 0x0fff),
+            3 => {
                 self.se_vx_byte(
                     @truncate((opcode & 0x0f00) >> 8),
                     @truncate(opcode & 0x00ff),
@@ -623,7 +603,7 @@ pub const Chip8CPU = struct {
                         );
                     },
                     // End of 0x8xyz
-                    else => unreachable,
+                    else => return FetchError.InvalidOpcode,
                 }
             },
             9 => { // 0x9xy0
@@ -636,7 +616,7 @@ pub const Chip8CPU = struct {
                 self.ld_i_addr(opcode & 0x0fff);
             },
             0xb => { // 0xbnnn
-                self.jp_v0_addr(opcode & 0x0fff);
+                try self.jp_v0_addr(opcode & 0x0fff);
             },
             0xc => { // 0xcxkk
                 self.rnd_vx_byte(
@@ -657,7 +637,7 @@ pub const Chip8CPU = struct {
                 switch (nibble) {
                     0x9e => self.skp_vx(@truncate((opcode & 0x0f00) >> 8)),
                     0xa1 => self.skpn_vx(@truncate((opcode & 0x0f00) >> 8)),
-                    else => unreachable, // End of 0xexyz
+                    else => return FetchError.InvalidOpcode, // End of 0xexyz
                 }
             },
             0xf => {
@@ -673,10 +653,11 @@ pub const Chip8CPU = struct {
                     0x33 => self.ld_b_vx(@truncate((opcode & 0x0f00) >> 8)),
                     0x55 => self.ld_i_vx(@truncate((opcode & 0x0f00) >> 8)),
                     0x65 => self.ld_vx_i(@truncate((opcode & 0x0f00) >> 8)),
-                    else => unreachable, // End of 0xfxyz
+                    else => return FetchError.InvalidOpcode, // End of 0xfxyz
                 }
             },
-            // End of global sw
+            // End of global sw. All possible cases are
+            // covered (0x0-0xf) for a single nibble (4 bits).
             else => unreachable,
         }
     }

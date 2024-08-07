@@ -4,33 +4,17 @@ x Make and pass tests for Keypad Input.
 x Make and pass tests for functions using the I Register.
 x Check if the Sprites array contains the correct elements.
 x Make and pass tests for Binary-Coded Decimal function (bcd).
-x Make and pass tests for functions for traspassing register values and 
-    to memory storage and vice-versa.
+x Make and pass tests for functions for traspassing register values and to memory storage and vice-versa.
 x Fix Drawing Sprites to the Screen.
-
-(A) Implement timers update.
-
-(A) Implement sound support.
-
-(B) jp: return an error if the jump is pointing to the interpreter reserved
-    memory section (0x0-0x200-1).
+x Implement timers update.
+x Implement sound support.
+x jp: return an error if the jump is pointing to the interpreter reserved memory section (0x0-0x200-1).
+x jp_v0_addr: return an error if the jump v[0]+nnn goes out of bounds ([0x0-0x200-1] and > [0xfff-...]).
+x call: return an error if trying to call a function when the stack pointer is 0xf+1, caused by a previous call. It will cause stack overflow.
+x call: return an error if the the call function recieves as a paremeter an address < 0x200 (reserved interpreter memory section).
+x ret: return a error when the stack pointer is zero and the return instruction is executed (There is no address to recover from the stack).
 
 (B) test_jump: Catch errors from the jp function.
-
-(B) jp_v0_addr: return an error if the jump v[0]+nnn goes out of bounds
-    ([0x0-0x200-1] and > [0xfff-...]).
-
 (B) test_jump_plus_v0: Catch errors from jp_v0_addr.
-
-(B) call: return an error if trying to call a function when the stack pointer
-    is 0xf+1, caused by a previous call. It will cause stack overflow.
-
-(B) call: return an error if the the call function recieves as a paremeter
-      an address < 0x200 (reserved interpreter memory section).
-
 (B) test_call_subroutine: Catch errors from the call function.
-
-(B) ret: return a error when the stack pointer is zero and the return 
-    instruction is executed (There is no address to recover from the stack).
-
 (B) test_return_from_subroutine: Catch errors from ret.
