@@ -13,8 +13,13 @@ x jp_v0_addr: return an error if the jump v[0]+nnn goes out of bounds ([0x0-0x20
 x call: return an error if trying to call a function when the stack pointer is 0xf+1, caused by a previous call. It will cause stack overflow.
 x call: return an error if the the call function recieves as a paremeter an address < 0x200 (reserved interpreter memory section).
 x ret: return a error when the stack pointer is zero and the return instruction is executed (There is no address to recover from the stack).
+x test_jump: Catch errors from the jp function.
+x test_jump_plus_v0: Catch errors from jp_v0_addr.
+x test_call_subroutine: Catch errors from the call function.
+x test_return_from_subroutine: Catch errors from ret.
 
-(B) test_jump: Catch errors from the jp function.
-(B) test_jump_plus_v0: Catch errors from jp_v0_addr.
-(B) test_call_subroutine: Catch errors from the call function.
-(B) test_return_from_subroutine: Catch errors from ret.
+(B) Make a function only for updating the timers
+(B) Make a function to draw the display.
+(B) Get the file path from a parameter.
+
+(C) Change the path of the sound if the program is installed or not.

@@ -791,17 +791,16 @@ test "test_call_subroutine" {
     var cpu = Chip8CPU.init();
     cpu.pc = 0x220;
     cpu.sp = 1;
-    cpu.call(0x444);
+    try cpu.call(0x444);
     try std.testing.expect(cpu.pc == 0x444);
     try std.testing.expect(cpu.stack[1] == 0x220);
     try std.testing.expect(cpu.sp == 2);
 
     // Try to call a subroutine when there are no
     // more space for adresses at the stack
-    // TODO Catch errors
     cpu.pc = 0x322;
     cpu.sp = 0xf + 1;
-    cpu.call(0x422);
+    try std.testing.expectError(ExecError.StackOverflow, cpu.call(0x422));
     try std.testing.expect(cpu.pc == 0x322);
     try std.testing.expect(cpu.sp == (0xf + 1));
 
@@ -810,7 +809,7 @@ test "test_call_subroutine" {
     cpu.pc = 0x420;
     cpu.sp = 3;
     cpu.stack[3] = 0x222;
-    cpu.call(0x100);
+    try std.testing.expectError(ExecError.JumpToInterpreterMemory, cpu.call(0x100));
     try std.testing.expect(cpu.pc == 0x420);
     try std.testing.expect(cpu.stack[3] == 0x222);
     try std.testing.expect(cpu.sp == 3);
@@ -821,14 +820,13 @@ test "test_return_from_subroutine" {
     cpu.pc = 0x220;
     cpu.sp = 1;
     cpu.stack[0] = 0x310;
-    cpu.ret();
+    try cpu.ret();
     try std.testing.expect(cpu.pc == (0x310 + 2));
     try std.testing.expect(cpu.sp == 0);
 
     // Execute a ret instruction when the
     // stack pointer is 0 (there is no pc to recover).
-    // TODO Catch errors
-    cpu.ret();
+    try std.testing.expectError(ExecError.ReturnWithEmptyStack, cpu.ret());
     try std.testing.expect(cpu.pc == (0x310 + 2));
     try std.testing.expect(cpu.sp == 0);
 }
@@ -836,14 +834,13 @@ test "test_return_from_subroutine" {
 test "test_jump" {
     var cpu = Chip8CPU.init();
     cpu.pc = 0x220;
-    cpu.jp(0x310);
+    try cpu.jp(0x310);
     try std.testing.expect(cpu.pc == 0x310);
 
     // Try to jump to the interpreter reserved
     // memory section.
-    // TODO Catch errors
     cpu.pc = 0x220;
-    cpu.jp(0x10);
+    try std.testing.expectError(ExecError.JumpToInterpreterMemory, cpu.jp(0x10));
     try std.testing.expect(cpu.pc == 0x220);
 }
 
@@ -851,24 +848,22 @@ test "test_jump_plus_v0" {
     var cpu = Chip8CPU.init();
     cpu.pc = 0x222;
     cpu.ld_vx_byte(0, 2);
-    cpu.jp_v0_addr(0x320);
+    try cpu.jp_v0_addr(0x320);
     try std.testing.expect(cpu.pc == (0x320 + 2));
 
     // Jump to ilegal memory section:
     // Interpreter memory section.
-    // TODO Catch errors
     cpu.pc = 0x450;
     cpu.regv[0] = 12;
-    cpu.jp_v0_addr(0x111);
+    try std.testing.expectError(ExecError.JumpToInterpreterMemory, cpu.jp_v0_addr(0x111));
     try std.testing.expect(cpu.pc == 0x450);
 
-    // Jump to a location that is a result
-    // of an addition overflow
-    // TODO Catch errors
-    cpu.pc = 0x250;
-    cpu.regv[0] = 25;
-    cpu.jp_v0_addr(0xfff);
-    try std.testing.expect(cpu.pc == 0x250);
+    // Jump to a location out of the
+    // chip8's memory.
+    cpu.pc = 0x400;
+    cpu.regv[0] = 0x20;
+    try std.testing.expectError(ExecError.JumpOutOfBounds, cpu.jp_v0_addr(0xfff));
+    try std.testing.expect(cpu.pc == 0x400);
 }
 
 test "test_skip_if_vx_equals_byte" {

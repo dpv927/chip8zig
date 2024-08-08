@@ -1,19 +1,19 @@
 const std = @import("std");
 const raylib = @import("raylib");
 
-const chip8cpu = @import("chip8cpu.zig");
-const Chip8CPU = chip8cpu.Chip8CPU;
-const ExecError = chip8cpu.ExecError;
-const FetchError = chip8cpu.FetchError;
+const chip8 = @import("chip8.zig");
+const FetchError = chip8.FetchError;
+const Chip8CPU = chip8.Chip8CPU;
+const ExecError = chip8.ExecError;
 
-pub fn main() !void {
+pub fn main() void {
     var cpu: Chip8CPU = Chip8CPU.init();
     const scale: i32 = 30;
     const fps: i32 = 60;
 
     // Load the ROM file to memory
     cpu.loadToROM("/home/tux/Downloads/program(1).c8") catch |err| {
-        std.debug.print("ROM could not be loaded: {}", .{err});
+        std.debug.print("ROM could not be loaded: {s}", .{@errorName(err)});
         return;
     };
 
@@ -55,7 +55,7 @@ pub fn main() !void {
                 var opcode: u16 = @intCast(cpu.ram[cpu.pc]);
                 opcode <<= 8;
                 opcode |= @intCast(cpu.ram[cpu.pc + 1]);
-                std.debug.print("Error: Invalid opcode detected: {}", .{opcode});
+                std.debug.print("Error: Invalid opcode detected: {X}", .{opcode});
             }
             // The error was caused by an instruction
             else if (@TypeOf(err) == ExecError) {
@@ -95,10 +95,10 @@ pub fn main() !void {
         for (0..2048) |it| {
             if (cpu.display[it] != 0) {
                 raylib.drawRectangle(
-                    @intCast(it % 64 * 30),
-                    @intCast((it / 64) * 30),
-                    30,
-                    30,
+                    @intCast((it % 64) * scale),
+                    @intCast((it / 64) * scale),
+                    scale,
+                    scale,
                     raylib.Color.white,
                 );
             }
